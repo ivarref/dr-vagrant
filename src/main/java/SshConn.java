@@ -54,6 +54,9 @@ public class SshConn extends Connection implements AutoCloseable {
     public synchronized void close() {
         if (session!=null) {
             try {
+                IOUtils.closeQuietly(session.getStderr());
+                IOUtils.closeQuietly(session.getStdin());
+                IOUtils.closeQuietly(session.getStdout());
                 session.close();
                 session = null;
             } catch (Exception e) {

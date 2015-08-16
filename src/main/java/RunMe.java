@@ -16,6 +16,16 @@ public class RunMe {
     }
 
     public static void main(String[] args) throws Exception {
+        doInit();
+
+        List<String> cmds = new ArrayList<>();
+        cmds = run(cmds, "apt-get -y update && apt-get -y upgrade");
+        cmds = run(cmds, "echo hello > " + "random-" + UUID.randomUUID().toString() + ".txt");
+
+        debug("ls -l /home/vagrant");
+    }
+
+    public static void doInit() {
         if (!listVms().contains(vmName())) {
             throw new RuntimeException(vmName() + " VM not found");
         }
@@ -35,13 +45,13 @@ public class RunMe {
         }
 
         System.out.println(">>> Snapshots = " + snapShots());
+    }
 
-        List<String> cmds = new ArrayList<>();
-        cmds = run(cmds, "apt-get -y update");
-        cmds = run(cmds, "apt-get -y upgrade");
-        cmds = run(cmds, "echo hello > " + "random-" + UUID.randomUUID().toString() + ".txt");
-
-        debug("ls -l /home/vagrant");
+    public static void doCmds(List<String> cmds) throws Exception {
+        List<String> soFar = new ArrayList<>();
+        for (String cmd : cmds) {
+            soFar = run(soFar, cmd);
+        }
     }
 
     private static void pump(InputStream is) throws Exception {
@@ -92,7 +102,7 @@ public class RunMe {
                 }
             }
             if (!snapsToDelete.isEmpty()) {
-                System.out.println(">>> Deleting snapshots " + snapsToDelete);
+                System.out.println(">>> Deleting snapshots " + snapsToDelete + ", restoring to " + requiredSnapshot);
                 executeAndReport("controlvm", vmName(), "poweroff");
                 executeAndReport("snapshot", vmName(), "restore", requiredSnapshot);
                 Collections.reverse(snapsToDelete);
@@ -105,10 +115,10 @@ public class RunMe {
         }
 
         if (snapShots().contains(newSnapshot)) {
-            System.out.println(">>> Command " + command + " already executed, doing nothing ...");
+            System.out.println(">>> Command '" + command + "' already executed, doing nothing");
             return add(cmds, command);
         } else {
-            System.out.println(">>> Executing '" + command + "' and saving as '" + newSnapshot + "' ...");
+            System.out.println(">>> Executing '" + command + "' ...");
             String executeable = "/home/vagrant/cmd-" + newSnapshot + ".sh";
 
             try (SshConn conn = new SshConn("localhost", 2222)) {
@@ -127,7 +137,7 @@ public class RunMe {
                 }
                 int exitCode = sess.getExitStatus().intValue();
                 if (exitCode == 0) {
-                    System.out.println(">>> Transfer OK");
+                    //System.out.println(">>> Transfer OK");
                 } else {
                     String message = ">>> Transfer failed, exit code " + exitCode;
                     System.err.println(message);
@@ -155,16 +165,16 @@ public class RunMe {
                 pump(out);
                 pump(err);
 
-                System.out.println(">>> Exit code was " + sess.getExitStatus().intValue());
+                //System.out.println(">>> Exit code was " + sess.getExitStatus().intValue());
                 exitCode = sess.getExitStatus().intValue();
             }
 
             if (exitCode == 0) {
-                System.out.println(">>> Saving snapshot");
                 takeSnapshot(add(cmds, command));
+                System.out.println(">>> Execution OK, saved snapshot '" + newSnapshot + "'");
             } else {
                 System.err.println(">>> Reverting to snapshot " + snapshotName(cmds));
-                String message = "Command '" + command + "' exited with error status " + exitCode;
+                String message = ">>> Command '" + command + "' exited with error status " + exitCode;
                 System.err.println(message);
                 revertToSnapshot(cmds);
                 throw new RuntimeException(message);
@@ -199,7 +209,7 @@ public class RunMe {
             System.err.println(message);
             throw new RuntimeException(message);
         }
-        executeAndReport("snapshot", vmName(), "take", name);
+        execute("snapshot", vmName(), "take", name).failOnError();
     }
 
     public static List<String> snapShots() {
@@ -282,7 +292,9 @@ public class RunMe {
         if (res.exitCode == 0) {
             System.out.println(">>> [OK] " + Arrays.asList(args));
         } else {
-            System.out.println(">>> [Fail] " + Arrays.asList(args));
+            System.err.println(res.stdOut);
+            System.err.println(res.stdErr);
+            System.err.println(">>> [Fail] " + Arrays.asList(args));
             throw new RuntimeException("Got exit code " + res.exitCode);
         }
         return res;
